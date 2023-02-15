@@ -18,12 +18,13 @@ Download tiles from WMS server based on provided options.
 Usage:
     wms-tiles-downloader get [flags]
 
-Flags:
+    Flags:
+        --auth string             Basic auth credentials in the form of username:password
     -b, --bbox float64Slice       Comma-separated list of bbox coords (default [])
         --concurrency int         Limit of concurrent requests to the WMS server (default 16)
         --format string           Tile format (default "image/png")
         --height int              Tile height (default 256)
-    -h, --help                    Help for get
+    -h, --help                    help for get
     -l, --layer string            Layer name
     -o, --output string           Output directory for downloaded tiles
         --params stringToString   Custom query string params (default [])
