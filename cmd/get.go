@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"github.com/lmikolajczak/wms-tiles-downloader/mercantile"
 	"github.com/lmikolajczak/wms-tiles-downloader/wms"
 	"github.com/schollz/progressbar/v3"
@@ -42,26 +40,7 @@ var getCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("ERR: %s\n", err)
 		}
-		auth, err := cmd.Flags().GetString("auth")
-		if err != nil {
-			fmt.Printf("ERR: %s\n", err)
-		}
-		username := ""
-		password := ""
-		if auth != "" {
-			if !strings.Contains(auth, ":") {
-				fmt.Printf("ERR: %s\n", "Invalid auth format. Should be username:password")
-			} else {
-				username = auth[:strings.Index(auth, ":")]
-				password = auth[strings.Index(auth, ":")+1:]
-			}
-		}
-		WMSClient, err := wms.NewClient(
-			url,
-			wms.WithQueryString(params),
-			wms.WithVersion(version),
-			wms.WithBasicAuth(username, password),
-		)
+		WMSClient, err := wms.NewClient(url, wms.WithQueryString(params), wms.WithVersion(version))
 		if err != nil {
 			fmt.Printf("ERR: %s\n", err)
 		}
@@ -185,8 +164,5 @@ func init() {
 	)
 	getCmd.Flags().StringToString(
 		"params", nil, "Custom query string params",
-	)
-	getCmd.Flags().String(
-		"auth", "", "Basic auth credentials in the form of username:password",
 	)
 }

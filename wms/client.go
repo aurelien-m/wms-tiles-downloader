@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/lmikolajczak/wms-tiles-downloader/mercantile"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"time"
-
-	"github.com/lmikolajczak/wms-tiles-downloader/mercantile"
 )
 
 const (
@@ -29,9 +28,6 @@ type Client struct {
 	requestType      string
 	spatialRefSystem string
 	queryStrings     map[string]string
-	useBasicAuth     bool
-	username         string
-	password         string
 }
 
 type ClientOption func(c *Client)
@@ -54,14 +50,6 @@ func WithQueryString(qs map[string]string) ClientOption {
 	}
 }
 
-func WithBasicAuth(username, password string) ClientOption {
-	return func(c *Client) {
-		c.username = username
-		c.password = password
-		c.useBasicAuth = true
-	}
-}
-
 func NewClient(baseURL string, options ...ClientOption) (*Client, error) {
 	if baseURL == "" {
 		return nil, errors.New("baseURL is required")
@@ -74,7 +62,6 @@ func NewClient(baseURL string, options ...ClientOption) (*Client, error) {
 		service:          "WMS",
 		requestType:      "GetMap",
 		spatialRefSystem: "EPSG:3857",
-		useBasicAuth:     false,
 	}
 
 	for _, option := range options {
@@ -118,8 +105,8 @@ func (c *Client) GetTile(ctx context.Context, tileID mercantile.TileID, timeout 
 	}
 
 	body, err := c.request(ctx, http.MethodGet, tileURL, timeout)
-		if err != nil {
-			return nil, err
+	if err != nil {
+		return nil, err
 	}
 	tile.body = body
 
@@ -149,9 +136,6 @@ func (c *Client) request(ctx context.Context, method string, url string, timeout
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
-	if c.useBasicAuth {
-		req.SetBasicAuth(c.username, c.password)
-	}
 	if err != nil {
 		return nil, err
 	}
