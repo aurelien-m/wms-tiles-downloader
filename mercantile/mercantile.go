@@ -5,7 +5,13 @@ Code below ports some functions from Python's https://github.com/mapbox/mercanti
 package mercantile
 
 import (
+	"fmt"
+	"io/ioutil"
 	"math"
+	"os"
+
+	geoshapes "github.com/ctessum/geom"
+	geojson "github.com/paulmach/go.geojson"
 )
 
 // Bbox represents Web Mercator Bounding Box.
@@ -47,6 +53,12 @@ func Ul(tile TileID) LngLat {
 	return LngLat{lonDeg, latDeg}
 }
 
+// Br retrieves bottom right coordinates (lon, lat) of a tile.
+func Br(tile TileID) LngLat {
+	nextTile := TileID{tile.X + 1, tile.Y + 1, tile.Z}
+	return Ul(nextTile)
+}
+
 // XyBounds retrieves Spherical Mercator Bounding Box of a tile.
 func XyBounds(tile TileID) Bbox {
 	left, top := Xy(Ul(tile))
@@ -64,17 +76,25 @@ func Tile(lng float64, lat float64, zoom int) TileID {
 	return TileID{tileX, tileY, zoom}
 }
 
-// Tiles retrieves tiles intersecting a geographic bounding box.
-func Tiles(west, south, east, north float64, zooms []int) []TileID {
-	var bboxes [][]float64
-	if west > east {
-		bboxWest := []float64{-180.0, south, east, north}
-		bboxEast := []float64{west, south, 180.0, north}
-		bboxes = [][]float64{bboxWest, bboxEast}
-	} else {
-		bboxes = [][]float64{{west, south, east, north}}
-	}
+type PolygonOption func(tile TileID) float64
 
+func WithPolygon(polygon geoshapes.Polygon) PolygonOption {
+	return func(tile TileID) float64 {
+		ul := Ul(tile)
+		br := Br(tile)
+		tile_latlon := geoshapes.Polygon{{
+			geoshapes.Point{X: ul.Lng, Y: ul.Lat},
+			geoshapes.Point{X: br.Lng, Y: ul.Lat},
+			geoshapes.Point{X: br.Lng, Y: br.Lat},
+			geoshapes.Point{X: ul.Lng, Y: br.Lat},
+		}}
+
+		inter := polygon.Intersection(tile_latlon)
+		return inter.Area()
+	}
+}
+
+func Tiles(bboxes [][]float64, zooms []int, options ...PolygonOption) []TileID {
 	var tiles []TileID
 	for _, bbox := range bboxes {
 		w := math.Max(-180.0, bbox[0])
@@ -102,10 +122,84 @@ func Tiles(west, south, east, north float64, zooms []int) []TileID {
 
 			for i := llx; i < int(math.Min(float64(ur.X)+1.0, math.Pow(2.0, float64(z)))); i++ {
 				for j := ury; j < int(math.Min(float64(ll.Y)+1.0, math.Pow(2.0, float64(z)))); j++ {
-					tiles = append(tiles, TileID{i, j, z})
+					tile := TileID{i, j, z}
+
+					if len(options) == 1 {
+						area := options[0](tile)
+						fmt.Printf("area: %f\n", area)
+						if area == 0 {
+							continue
+						}
+					}
+
+					tiles = append(tiles, tile)
 				}
 			}
 		}
 	}
+
 	return tiles
+}
+
+// TilesFromBbox retrieves tiles intersecting a geographic bounding box.
+func TilesFromBbox(west, south, east, north float64, zooms []int) []TileID {
+	var bboxes [][]float64
+	if west > east {
+		bboxWest := []float64{-180.0, south, east, north}
+		bboxEast := []float64{west, south, 180.0, north}
+		bboxes = [][]float64{bboxWest, bboxEast}
+	} else {
+		bboxes = [][]float64{{west, south, east, north}}
+	}
+	return Tiles(bboxes, zooms)
+}
+
+// TilesFromGeoJSON retrieves tiles intersecting a GeoJSON polygon.
+func TilesFromGeoJSON(geojson_path string, zooms []int) []TileID {
+	jsonFile, err := os.Open(geojson_path)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	fc, err := geojson.UnmarshalFeatureCollection(byteValue)
+	if err != nil {
+		fmt.Printf("error: %v", err)
+	}
+
+	west := 0.0
+	south := 0.0
+	east := 0.0
+	north := 0.0
+
+	points := []geoshapes.Point{}
+	for _, point := range fc.Features[0].Geometry.MultiPolygon[0][0] {
+		points = append(points, geoshapes.Point{X: point[0], Y: point[1]})
+
+		if point[0] < west || west == 0.0 {
+			west = point[0]
+		}
+		if point[0] > east || east == 0.0 {
+			east = point[0]
+		}
+		if point[1] < south || south == 0.0 {
+			south = point[1]
+		}
+		if point[1] > north || north == 0.0 {
+			north = point[1]
+		}
+	}
+	polygon := geoshapes.Polygon{points}
+
+	var bboxes [][]float64
+	if west > east {
+		bboxWest := []float64{-180.0, south, east, north}
+		bboxEast := []float64{west, south, 180.0, north}
+		bboxes = [][]float64{bboxWest, bboxEast}
+	} else {
+		bboxes = [][]float64{{west, south, east, north}}
+	}
+
+	return Tiles(bboxes, zooms, WithPolygon(polygon))
 }
