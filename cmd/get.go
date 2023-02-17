@@ -17,8 +17,12 @@ var getCmd = &cobra.Command{
 	Long:  "Download tiles from WMS server based on provided options.",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		// Get IDs of tiles that are intersecting given bbox on provided zoom levels.
+		// Get IDs of tiles that are intersecting given bbox or geojson on provided zoom levels.
 		bbox, err := cmd.Flags().GetFloat64Slice("bbox")
+		if err != nil {
+			fmt.Printf("ERR: %s\n", err)
+		}
+		geojson_path, err := cmd.Flags().GetString("geojson")
 		if err != nil {
 			fmt.Printf("ERR: %s\n", err)
 		}
@@ -26,7 +30,15 @@ var getCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("ERR: %s\n", err)
 		}
-		tileIDs := mercantile.Tiles(bbox[0], bbox[1], bbox[2], bbox[3], zoom)
+
+		tileIDs := []mercantile.TileID{}
+		if len(bbox) == 4 {
+			tileIDs = mercantile.TilesFromBbox(bbox[0], bbox[1], bbox[2], bbox[3], zoom)
+		} else if geojson_path != "" {
+			tileIDs = mercantile.TilesFromGeoJSON(geojson_path, zoom)
+		} else {
+			fmt.Printf("ERR: %s\n", "Either bbox or geojson should be provided.")
+		}
 		bar := progressbar.Default(int64(len(tileIDs)))
 
 		// Initialize new WMS client
@@ -153,12 +165,11 @@ func init() {
 		"zoom", "z", nil, "Comma-separated list of zooms",
 	)
 	getCmd.MarkFlagRequired("zoom")
+
+	// Optional args/flags
 	getCmd.Flags().Float64SliceP(
 		"bbox", "b", nil, "Comma-separated list of bbox coords",
 	)
-	getCmd.MarkFlagRequired("bbox")
-
-	// Optional args/flags
 	getCmd.Flags().StringP(
 		"style", "s", "", "Layer style",
 	)
@@ -188,5 +199,8 @@ func init() {
 	)
 	getCmd.Flags().String(
 		"auth", "", "Basic auth credentials in the form of username:password",
+	)
+	getCmd.Flags().String(
+		"geojson", "", "GeoJSON file with boundaries to download tiles for",
 	)
 }
